@@ -1,9 +1,10 @@
 const API_VIDEO = "/api/video";
 
-// --- Variáveis de Estado (Paginação) ---
+// --- Variáveis de Estado ---
 let allVideos = [];
 let currentPage = 1;
 const itemsPerPage = 10;
+let msgTimeout = null; // Variável para controlar o tempo da mensagem
 
 // --- Gerenciamento de Autenticação ---
 
@@ -19,36 +20,49 @@ function getAuthHeaders() {
 }
 
 function handleAuthError() {
-    // Aqui também podemos usar o showError se quisermos evitar alert no logout forçado,
-    // mas o padrão é redirecionar, então alert + redirect está ok.
     alert("Sessão expirada. Faça login novamente.");
     localStorage.removeItem("token");
     window.location.href = "login.html";
 }
 
-// --- Helpers de Mensagem (Novo) ---
+// --- Helpers de Mensagem (Atualizados) ---
 
 function showError(message) {
     const msgDiv = document.getElementById("uploadMsg");
     if (msgDiv) {
+        // Se já tiver um timer rodando, cancela ele para não sumir a nova mensagem cedo demais
+        if (msgTimeout) clearTimeout(msgTimeout);
+
+        // Removemos o botão close e a classe alert-dismissible
         msgDiv.innerHTML = `
-            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <div class="alert alert-danger fade show" role="alert">
                 <i class="bi bi-exclamation-triangle-fill me-2"></i> ${message}
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
             </div>
         `;
+
+        // Agenda o desaparecimento para 5 segundos
+        msgTimeout = setTimeout(() => {
+            msgDiv.innerHTML = "";
+            msgTimeout = null;
+        }, 5000);
     }
 }
 
 function showSuccess(message) {
     const msgDiv = document.getElementById("uploadMsg");
     if (msgDiv) {
+        if (msgTimeout) clearTimeout(msgTimeout);
+
         msgDiv.innerHTML = `
-            <div class="alert alert-success alert-dismissible fade show" role="alert">
+            <div class="alert alert-success fade show" role="alert">
                 <i class="bi bi-check-circle-fill me-2"></i> ${message}
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
             </div>
         `;
+
+        msgTimeout = setTimeout(() => {
+            msgDiv.innerHTML = "";
+            msgTimeout = null;
+        }, 5000);
     }
 }
 
@@ -56,6 +70,10 @@ function clearError() {
     const msgDiv = document.getElementById("uploadMsg");
     if (msgDiv) {
         msgDiv.innerHTML = "";
+    }
+    if (msgTimeout) {
+        clearTimeout(msgTimeout);
+        msgTimeout = null;
     }
 }
 
@@ -65,18 +83,14 @@ function setupUI() {
     const input = document.getElementById("videoInput");
     const btnUpload = document.getElementById("btnUpload");
     
-    // Upload Button Logic
     if (input && btnUpload) {
         input.addEventListener("change", () => {
             // Limpa mensagens anteriores ao selecionar novo arquivo
             clearError();
-            
-            // Habilita/Desabilita botão
             btnUpload.disabled = input.files.length === 0;
         });
     }
 
-    // Pagination Listeners
     document.getElementById("btnPrevPage")?.addEventListener("click", () => changePage(-1));
     document.getElementById("btnNextPage")?.addEventListener("click", () => changePage(1));
 }
@@ -91,30 +105,29 @@ function changePage(delta) {
     }
 }
 
-// --- Lógica de Upload (Com Validação Visual) ---
+// --- Lógica de Upload ---
 
 async function uploadVideo() {
     const input = document.getElementById("videoInput");
     const btn = document.getElementById("btnUpload");
     const file = input.files[0];
     
-    // Limpa mensagens anteriores
-    clearError();
+    clearError(); // Garante que limpamos timers antigos
 
     if (!file) {
         showError("Selecione um arquivo para enviar.");
         return;
     }
 
-    // 1. Validação de Tipo (MP4)
+    // 1. Validação de Tipo
     if (file.type !== "video/mp4") {
         showError("Formato inválido! O arquivo deve ser <strong>.mp4</strong>.");
-        input.value = ""; // Limpa o arquivo inválido
+        input.value = ""; 
         btn.disabled = true;
         return;
     }
 
-    // 2. Validação de Tamanho (100MB)
+    // 2. Validação de Tamanho
     const MAX_SIZE_MB = 100;
     if (file.size > MAX_SIZE_MB * 1024 * 1024) {
         showError(`Arquivo muito grande! O limite é de <strong>${MAX_SIZE_MB}MB</strong>.`);
@@ -130,19 +143,11 @@ async function uploadVideo() {
         const authHeaders = getAuthHeaders();
         if (!authHeaders) return;
 
-        // PASSO 1: Solicitar URL Pré-assinada
-        console.log("1. Solicitando permissão de upload...");
-        
+        // PASSO 1
         const reqInit = await fetch(`${API_VIDEO}/request-upload`, {
             method: "POST",
-            headers: {
-                ...authHeaders,
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                filename: file.name,
-                content_type: file.type
-            })
+            headers: { ...authHeaders, "Content-Type": "application/json" },
+            body: JSON.stringify({ filename: file.name, content_type: file.type })
         });
 
         if (reqInit.status === 401) return handleAuthError();
@@ -154,52 +159,41 @@ async function uploadVideo() {
 
         const { upload_url, task_id } = await reqInit.json();
 
-        // PASSO 2: Enviar arquivo binário para o S3
-        console.log("2. Enviando arquivo para o S3...");
+        // PASSO 2
         const s3Upload = await fetch(upload_url, {
             method: "PUT",
-            headers: {
-                "Content-Type": file.type
-            },
+            headers: { "Content-Type": file.type },
             body: file
         });
 
         if (!s3Upload.ok) throw new Error("Falha ao enviar arquivo para o S3");
 
-        // PASSO 3: Confirmar processamento
-        console.log("3. Confirmando processamento...");
-        
+        // PASSO 3
         const reqConfirm = await fetch(`${API_VIDEO}/confirm-upload`, {
             method: "POST",
-            headers: {
-                ...authHeaders,
-                "Content-Type": "application/json"
-            },
+            headers: { ...authHeaders, "Content-Type": "application/json" },
             body: JSON.stringify({ task_id: task_id })
         });
 
         if (reqConfirm.status === 401) return handleAuthError();
         if (!reqConfirm.ok) throw new Error("Falha ao confirmar upload");
 
-        // Sucesso!
         showSuccess("Vídeo enviado com sucesso! O processamento iniciará em breve.");
         input.value = ""; 
         
-        // Recarrega a lista e volta para a primeira página
         currentPage = 1;
         loadVideos(); 
 
     } catch (err) {
         console.error(err);
         showError("Erro no envio: " + err.message);
-        // Em caso de erro de rede, permite tentar de novo se o arquivo ainda estiver lá
         if (input.files.length > 0) btn.disabled = false;
     } finally {
         toggleLoader(false);
     }
 }
 
-// --- Lógica de Listagem (Com Paginação) ---
+// --- Lógica de Listagem ---
 
 async function loadVideos() {
     const tbody = document.getElementById("videoTableBody");
@@ -213,20 +207,14 @@ async function loadVideos() {
 
         const res = await fetch(`${API_VIDEO}/list`, {
             method: "GET",
-            headers: {
-                ...authHeaders,
-                "Content-Type": "application/json"
-            }
+            headers: { ...authHeaders, "Content-Type": "application/json" }
         });
 
         if (res.status === 401) return handleAuthError();
         if (!res.ok) throw new Error("Erro ao buscar lista");
 
         const data = await res.json();
-        // Salva todos os vídeos na variável global
         allVideos = data.items || [];
-
-        // Renderiza a página atual
         renderTable();
 
     } catch (err) {
@@ -250,13 +238,11 @@ function renderTable() {
         return;
     }
 
-    // Calcula paginação
     const totalPages = Math.ceil(allVideos.length / itemsPerPage);
     const start = (currentPage - 1) * itemsPerPage;
     const end = start + itemsPerPage;
     const pageItems = allVideos.slice(start, end);
 
-    // Exibe/Oculta controles
     if (totalPages > 1) {
         controls.classList.remove("d-none");
         indicator.textContent = `Página ${currentPage} de ${totalPages}`;
@@ -266,15 +252,11 @@ function renderTable() {
         controls.classList.add("d-none");
     }
 
-    // Renderiza linhas
     pageItems.forEach(v => {
         const statusBadge = getStatusBadge(v.status);
-        
         const downloadUrl = v.downloadUrl || v.download_url;
         const downloadBtn = downloadUrl 
-            ? `<a href="${downloadUrl}" target="_blank" class="btn btn-sm btn-outline-success">
-                    <i class="bi bi-download"></i> Download
-                </a>` 
+            ? `<a href="${downloadUrl}" target="_blank" class="btn btn-sm btn-outline-success"><i class="bi bi-download"></i> Download</a>` 
             : '<span class="text-muted small">Aguardando...</span>';
         
         let dateStr = "-";
@@ -284,7 +266,7 @@ function renderTable() {
                     day: '2-digit', month: '2-digit', year: 'numeric',
                     hour: '2-digit', minute: '2-digit'
                 });
-            } catch (e) { console.error("Data inválida", v.created_at); }
+            } catch (e) { }
         }
 
         tbody.innerHTML += `
@@ -298,15 +280,13 @@ function renderTable() {
     });
 }
 
-// --- Helpers ---
-
 function getStatusBadge(status) {
     const s = (status || "").toLowerCase();
     
     let color = "secondary";
     let label = status;
 
-    if (s === "processed" || s === "concluido") {
+    if (s === "done") {
         color = "success";      
         label = "CONCLUÍDO";
     } 
@@ -314,13 +294,13 @@ function getStatusBadge(status) {
         color = "info text-dark"; 
         label = "EM PROCESSAMENTO";
     } 
-    else if (s === "pending" || s === "pending_upload" || s === "queued") {
+    else if (s === "queued") {
         color = "warning text-dark"; 
-        label = (s === "queued") ? "NA FILA" : "PENDENTE";
+        label = "NA FILA";
     } 
-    else if (s === "error" || s === "erro" || s === "upload_failed") {
+    else if (s === "error") {
         color = "danger";       
-        label = "ERRO";
+        label = "FALHOU";
     }
 
     return `<span class="badge bg-${color}">${label}</span>`;
@@ -331,29 +311,18 @@ function toggleLoader(show) {
     if (loader) loader.style.display = show ? "flex" : "none";
 }
 
-// --- Inicialização ---
-
 document.addEventListener("DOMContentLoaded", () => {
     setupUI();
-
     if (document.getElementById("videoTableBody")) {
         loadVideos();
-        
         const btnUpload = document.getElementById("btnUpload");
         if(btnUpload) btnUpload.addEventListener("click", uploadVideo);
-
         const btnRefresh = document.getElementById("btnRefresh");
-        if(btnRefresh) btnRefresh.addEventListener("click", () => {
-            currentPage = 1; // Reseta para primeira página ao atualizar
-            loadVideos();
-        });
-        
+        if(btnRefresh) btnRefresh.addEventListener("click", () => { currentPage = 1; loadVideos(); });
         const btnLogout = document.getElementById("btnLogout");
-        if(btnLogout) {
-            btnLogout.addEventListener("click", () => {
-                localStorage.removeItem("token");
-                window.location.href = "login.html";
-            });
-        }
+        if(btnLogout) btnLogout.addEventListener("click", () => {
+            localStorage.removeItem("token");
+            window.location.href = "login.html";
+        });
     }
 });
