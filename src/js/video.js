@@ -292,7 +292,7 @@ function getStatusBadge(status) {
     } 
     else if (s === "processing") {
         color = "info text-dark"; 
-        label = "EM PROCESSAMENTO";
+        label = "PROCESSANDO";
     } 
     else if (s === "queued") {
         color = "warning text-dark"; 
@@ -300,7 +300,7 @@ function getStatusBadge(status) {
     } 
     else if (s === "error") {
         color = "danger";       
-        label = "FALHOU";
+        label = "ERRO";
     }
 
     return `<span class="badge bg-${color}">${label}</span>`;
