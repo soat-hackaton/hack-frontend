@@ -121,7 +121,9 @@ async function loadVideos() {
 
         if (!res.ok) throw new Error("Erro ao buscar lista de vídeos");
 
-        const videos = await res.json();
+        const data = await res.json();
+        const videos = data.items || [];
+        
         tbody.innerHTML = "";
 
         if (!videos || videos.length === 0) {
