@@ -1,11 +1,9 @@
 const API_VIDEO = "/api/video";
 
 // --- Gerenciamento de Autenticação ---
-
 function getAuthHeaders() {
     const token = localStorage.getItem("token");
     if (!token) {
-        // Sem token, nem tenta. Manda pro login.
         window.location.href = "login.html";
         return null;
     }
@@ -20,26 +18,42 @@ function handleAuthError() {
     window.location.href = "login.html";
 }
 
-// --- Lógica de Upload (Padrão S3 Presigned URL) ---
+// --- UI Logic ---
+function setupUploadButton() {
+    const input = document.getElementById("videoInput");
+    const btn = document.getElementById("btnUpload");
 
+    if (!input || !btn) return;
+
+    input.addEventListener("change", () => {
+        // Habilita se tiver arquivo
+        btn.disabled = input.files.length === 0;
+    });
+}
+
+// --- Upload Logic ---
 async function uploadVideo() {
     const input = document.getElementById("videoInput");
+    const btn = document.getElementById("btnUpload");
     const file = input.files[0];
+    
     if (!file) return alert("Selecione um arquivo!");
 
     toggleLoader(true);
+    btn.disabled = true;
 
     try {
-        const headers = getAuthHeaders();
-        if (!headers) return; // Se não tem header, o getAuthHeaders já redirecionou
+        const authHeaders = getAuthHeaders();
+        if (!authHeaders) return;
 
-        // PASSO 1: Solicitar URL Pré-assinada ao Backend
-        // Enviamos apenas metadados (JSON), não o arquivo.
+        // PASSO 1: Solicitar URL Pré-assinada
         console.log("1. Solicitando permissão de upload...");
+        
         const reqInit = await fetch(`${API_VIDEO}/request-upload`, {
             method: "POST",
+            // USANDO SPREAD OPERATOR AQUI
             headers: {
-                ...headers,
+                ...authHeaders,
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({
@@ -53,26 +67,26 @@ async function uploadVideo() {
 
         const { upload_url, task_id } = await reqInit.json();
 
-        // PASSO 2: Enviar o Arquivo DIRETAMENTE para o S3 (PUT)
-        // Nota: NÃO enviamos o header Authorization aqui, pois a URL já contém a assinatura da AWS.
-        // O Content-Type deve ser exatamente o mesmo informado no passo 1.
+        // PASSO 2: Enviar arquivo binário para o S3
         console.log("2. Enviando arquivo para o S3...");
         const s3Upload = await fetch(upload_url, {
             method: "PUT",
             headers: {
                 "Content-Type": file.type
             },
-            body: file // O binário do arquivo vai aqui
+            body: file
         });
 
         if (!s3Upload.ok) throw new Error("Falha ao enviar arquivo para o S3");
 
-        // PASSO 3: Confirmar para o Backend que o upload terminou
+        // PASSO 3: Confirmar processamento
         console.log("3. Confirmando processamento...");
+        
         const reqConfirm = await fetch(`${API_VIDEO}/confirm-upload`, {
             method: "POST",
+            // USANDO SPREAD OPERATOR AQUI
             headers: {
-                ...headers, // Aqui precisamos do token de novo
+                ...authHeaders,
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({ task_id: task_id })
@@ -80,75 +94,78 @@ async function uploadVideo() {
 
         if (reqConfirm.status === 401) return handleAuthError();
         if (!reqConfirm.ok) throw new Error("Falha ao confirmar upload");
-        console.log("4. Vídeo enviado com sucesso! O processamento iniciará em breve.");
 
-        alert("Vídeo enviado com sucesso! O processamento iniciará em breve.");
-        input.value = ""; // Limpa o input
-        loadVideos(); // Recarrega a lista
+        alert("Vídeo enviado com sucesso!");
+        input.value = ""; 
+        loadVideos(); 
 
     } catch (err) {
         console.error(err);
         alert("Erro no fluxo de upload: " + err.message);
+        if (input.files.length > 0) btn.disabled = false;
     } finally {
         toggleLoader(false);
     }
 }
 
-// --- Lógica de Listagem ---
-
+// --- List Logic ---
 async function loadVideos() {
     const tbody = document.getElementById("videoTableBody");
-    if (!tbody) return; // Proteção caso script rode fora da dashboard
+    if (!tbody) return;
 
-    tbody.innerHTML = '<tr><td colspan="3" class="text-center">Carregando...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="4" class="text-center">Carregando...</td></tr>';
 
     try {
-        const headers = getAuthHeaders();
-        if (!headers) return;
+        const authHeaders = getAuthHeaders();
+        if (!authHeaders) return;
 
         const res = await fetch(`${API_VIDEO}/list`, {
             method: "GET",
+            // USANDO SPREAD OPERATOR AQUI
             headers: {
-                ...headers,
+                ...authHeaders,
                 "Content-Type": "application/json"
             }
         });
 
-        // Intercepta Token Expirado
-        if (res.status === 401) {
-            return handleAuthError();
-        }
-
-        if (!res.ok) throw new Error("Erro ao buscar lista de vídeos");
+        if (res.status === 401) return handleAuthError();
+        if (!res.ok) throw new Error("Erro ao buscar lista");
 
         const data = await res.json();
         const videos = data.items || [];
-        
+
         tbody.innerHTML = "";
 
-        if (!videos || videos.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="3" class="text-center">Nenhum vídeo encontrado.</td></tr>';
+        if (videos.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="text-center">Nenhum vídeo encontrado.</td></tr>';
             return;
         }
 
-        // Renderiza as linhas
         videos.forEach(v => {
             const statusBadge = getStatusBadge(v.status);
-            // Se tiver downloadUrl e status for processed, exibe botão
-            const downloadBtn = (v.downloadUrl || v.download_url) 
-                ? `<a href="${v.downloadUrl || v.download_url}" target="_blank" class="btn btn-sm btn-success">Baixar</a>` 
-                : '<span class="text-muted">-</span>';
             
-            // Formatando data simples (opcional)
-            const dateStr = v.created_at ? new Date(v.created_at).toLocaleString() : "-";
+            const downloadUrl = v.downloadUrl || v.download_url;
+            const downloadBtn = downloadUrl 
+                ? `<a href="${downloadUrl}" target="_blank" class="btn btn-sm btn-outline-success">
+                     <i class="bi bi-download"></i> Download
+                   </a>` 
+                : '<span class="text-muted small">Aguardando...</span>';
+            
+            let dateStr = "-";
+            if (v.created_at) {
+                try {
+                    dateStr = new Date(v.created_at).toLocaleString('pt-BR', {
+                        day: '2-digit', month: '2-digit', year: 'numeric',
+                        hour: '2-digit', minute: '2-digit'
+                    });
+                } catch (e) { console.error("Data inválida", v.created_at); }
+            }
 
             tbody.innerHTML += `
                 <tr>
-                    <td>
-                        ${v.filename}<br>
-                        <small class="text-muted">${dateStr}</small>
-                    </td>
+                    <td class="fw-medium">${v.filename}</td>
                     <td>${statusBadge}</td>
+                    <td>${dateStr}</td>
                     <td>${downloadBtn}</td>
                 </tr>
             `;
@@ -156,24 +173,29 @@ async function loadVideos() {
 
     } catch (err) {
         console.error(err);
-        tbody.innerHTML = '<tr><td colspan="3" class="text-center text-danger">Erro ao carregar vídeos.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-danger">Erro ao carregar vídeos.</td></tr>';
     }
 }
 
-// --- Helpers de UI ---
-
+// --- Helpers ---
 function getStatusBadge(status) {
+    const s = (status || "").toLowerCase();
+    
     let color = "secondary";
-    let label = status || "Desconhecido";
-    const s = label.toLowerCase();
+    let label = status;
 
     if (s === "processed" || s === "concluido") {
-        color = "success";
-    } else if (s === "processing" || s === "pending" || s === "pending_upload") {
-        color = "warning";
-        label = "Processando";
+        color = "success";      
+        label = "CONCLUÍDO";
+    } else if (s === "processing") {
+        color = "info text-dark"; 
+        label = "EM PROCESSAMENTO";
+    } else if (s === "pending" || s === "pending_upload") {
+        color = "warning text-dark"; 
+        label = "PENDENTE";
     } else if (s === "error" || s === "erro") {
-        color = "danger";
+        color = "danger";       
+        label = "ERRO";
     }
 
     return `<span class="badge bg-${color}">${label}</span>`;
@@ -184,10 +206,9 @@ function toggleLoader(show) {
     if (loader) loader.style.display = show ? "flex" : "none";
 }
 
-// --- Inicialização ---
-
 document.addEventListener("DOMContentLoaded", () => {
-    // Verifica se estamos na página que tem a tabela (Dashboard)
+    setupUploadButton();
+
     if (document.getElementById("videoTableBody")) {
         loadVideos();
         
@@ -196,5 +217,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const btnRefresh = document.getElementById("btnRefresh");
         if(btnRefresh) btnRefresh.addEventListener("click", loadVideos);
+        
+        const btnLogout = document.getElementById("btnLogout");
+        if(btnLogout) {
+            btnLogout.addEventListener("click", () => {
+                localStorage.removeItem("token");
+                window.location.href = "login.html";
+            });
+        }
     }
 });

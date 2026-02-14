@@ -1,48 +1,71 @@
 <!DOCTYPE html>
-<html lang="pt-br">
+<html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard - Hack Video</title>
-    <link rel="icon" type="image/x-icon" href="img/favicon.png">
-
+    
+    <link rel="icon" type="image/png" href="img/favicon.png">
+    
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        .loading-overlay { position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,0.8); z-index:9999; display:none; justify-content:center; align-items:center; }
-    </style>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    
+    <link href="css/custom.css" rel="stylesheet">
 </head>
-<body>
-    <nav class="navbar navbar-dark bg-dark mb-4">
+<body class="bg-light">
+
+    <div id="loader" class="loader-overlay">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Carregando...</span>
+        </div>
+    </div>
+
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
         <div class="container">
-            <span class="navbar-brand">Hack Video Processor</span>
-            <button id="btnLogout" class="btn btn-outline-light btn-sm">Sair</button>
+            <a class="navbar-brand" href="#">
+                <i class="bi bi-camera-reels"></i> Hack Video
+            </a>
+            <div class="d-flex">
+                <button class="btn btn-outline-light btn-sm" id="btnLogout">Sair</button>
+            </div>
         </div>
     </nav>
 
     <div class="container">
+        
         <div class="card mb-4 shadow-sm">
-            <div class="card-header bg-success text-white">Novo Processamento</div>
+            <div class="card-header bg-success text-white">
+                <i class="bi bi-cloud-upload"></i> Novo Processamento
+            </div>
             <div class="card-body">
-                <label class="form-label">Selecione um vídeo para processar</label>
-                <div class="input-group">
-                    <input type="file" class="form-control" id="videoInput" accept="video/*">
-                    <button class="btn btn-success" type="button" id="btnUpload">Enviar</button>
+                <label for="videoInput" class="form-label fw-bold">Selecione um vídeo para processar</label>
+                
+                <div class="input-group mb-1">
+                    <input type="file" class="form-control" id="videoInput" accept="video/mp4">
+                    <button class="btn btn-success" type="button" id="btnUpload" disabled>Enviar</button>
                 </div>
+                
+                <small class="text-muted">Formatos suportados: MP4 (Máx 100MB)</small>
+                
                 <div id="uploadMsg" class="mt-2"></div>
             </div>
         </div>
 
-        <div class="card shadow-sm">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <span>Seus Vídeos</span>
-                <button id="btnRefresh" class="btn btn-sm btn-secondary">Atualizar</button>
+        <div class="card p-4 shadow-sm">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="mb-0">Seus Vídeos</h5>
+                <button class="btn btn-outline-secondary btn-sm" id="btnRefresh">
+                    <i class="bi bi-arrow-clockwise"></i> Atualizar Lista
+                </button>
             </div>
-            <div class="card-body p-0">
-                <table class="table table-striped mb-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
                     <thead>
                         <tr>
-                            <th>Nome do Arquivo</th>
-                            <th>Status</th>
-                            <th>Ações</th>
+                            <th style="width: 35%">Nome do Arquivo</th>
+                            <th style="width: 15%">Status</th>
+                            <th style="width: 25%">Data de Criação</th>
+                            <th style="width: 25%">Ações</th>
                         </tr>
                     </thead>
                     <tbody id="videoTableBody">
@@ -50,10 +73,7 @@
                 </table>
             </div>
         </div>
-    </div>
 
-    <div id="loader" class="loading-overlay">
-        <div class="spinner-border text-primary" role="status"></div>
     </div>
 
     <script src="js/auth.js"></script>
