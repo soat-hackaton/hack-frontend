@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Lista de todos os manifestos que compõem sua aplicação
+resources:
+  - namespace.yml
+  - deployment.yml
+  - service.yml
+  - ingress.yml 
+
+# Regra de substituição de imagem
+images:
+  - name: frontend-image       # O nome lógico que usamos no deployment.yml
+    newName: placeholder       # Será substituído pelo CI/CD
+    newTag: latest             # Será substituído pelo CI/CD
