@@ -80,6 +80,7 @@ async function uploadVideo() {
 
         if (reqConfirm.status === 401) return handleAuthError();
         if (!reqConfirm.ok) throw new Error("Falha ao confirmar upload");
+        console.log("4. Vídeo enviado com sucesso! O processamento iniciará em breve.");
 
         alert("Vídeo enviado com sucesso! O processamento iniciará em breve.");
         input.value = ""; // Limpa o input
