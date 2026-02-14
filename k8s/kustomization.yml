@@ -4,7 +4,7 @@ kind: Kustomization
 # Lista de todos os manifestos que compõem sua aplicação
 resources:
   - namespace.yml
-  - deployment.yml
+  - deployments.yml
   - service.yml
   - ingress.yml 
 
