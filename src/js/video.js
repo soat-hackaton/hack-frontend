@@ -1,6 +1,12 @@
 const API_VIDEO = "/api/video";
 
+// --- Variáveis de Estado (Paginação) ---
+let allVideos = [];
+let currentPage = 1;
+const itemsPerPage = 10;
+
 // --- Gerenciamento de Autenticação ---
+
 function getAuthHeaders() {
     const token = localStorage.getItem("token");
     if (!token) {
@@ -18,26 +24,59 @@ function handleAuthError() {
     window.location.href = "login.html";
 }
 
-// --- UI Logic ---
-function setupUploadButton() {
+// --- Lógica de UI (Botão Enviar e Paginação) ---
+
+function setupUI() {
     const input = document.getElementById("videoInput");
-    const btn = document.getElementById("btnUpload");
+    const btnUpload = document.getElementById("btnUpload");
+    
+    // Upload Button Logic
+    if (input && btnUpload) {
+        input.addEventListener("change", () => {
+            btnUpload.disabled = input.files.length === 0;
+        });
+    }
 
-    if (!input || !btn) return;
-
-    input.addEventListener("change", () => {
-        // Habilita se tiver arquivo
-        btn.disabled = input.files.length === 0;
-    });
+    // Pagination Listeners
+    document.getElementById("btnPrevPage")?.addEventListener("click", () => changePage(-1));
+    document.getElementById("btnNextPage")?.addEventListener("click", () => changePage(1));
 }
 
-// --- Upload Logic ---
+function changePage(delta) {
+    const totalPages = Math.ceil(allVideos.length / itemsPerPage);
+    const newPage = currentPage + delta;
+
+    if (newPage >= 1 && newPage <= totalPages) {
+        currentPage = newPage;
+        renderTable();
+    }
+}
+
+// --- Lógica de Upload (Com Validação) ---
+
 async function uploadVideo() {
     const input = document.getElementById("videoInput");
     const btn = document.getElementById("btnUpload");
     const file = input.files[0];
     
     if (!file) return alert("Selecione um arquivo!");
+
+    // 1. Validação de Tipo (MP4)
+    if (file.type !== "video/mp4") {
+        alert("Formato inválido! Por favor, envie apenas arquivos .mp4");
+        input.value = ""; // Limpa o arquivo inválido
+        btn.disabled = true;
+        return;
+    }
+
+    // 2. Validação de Tamanho (100MB)
+    const MAX_SIZE_MB = 100;
+    if (file.size > MAX_SIZE_MB * 1024 * 1024) {
+        alert(`Arquivo muito grande! O limite é de ${MAX_SIZE_MB}MB.`);
+        input.value = "";
+        btn.disabled = true;
+        return;
+    }
 
     toggleLoader(true);
     btn.disabled = true;
@@ -51,7 +90,6 @@ async function uploadVideo() {
         
         const reqInit = await fetch(`${API_VIDEO}/request-upload`, {
             method: "POST",
-            // USANDO SPREAD OPERATOR AQUI
             headers: {
                 ...authHeaders,
                 "Content-Type": "application/json"
@@ -84,7 +122,6 @@ async function uploadVideo() {
         
         const reqConfirm = await fetch(`${API_VIDEO}/confirm-upload`, {
             method: "POST",
-            // USANDO SPREAD OPERATOR AQUI
             headers: {
                 ...authHeaders,
                 "Content-Type": "application/json"
@@ -97,6 +134,9 @@ async function uploadVideo() {
 
         alert("Vídeo enviado com sucesso!");
         input.value = ""; 
+        
+        // Recarrega a lista e volta para a primeira página
+        currentPage = 1;
         loadVideos(); 
 
     } catch (err) {
@@ -108,7 +148,8 @@ async function uploadVideo() {
     }
 }
 
-// --- List Logic ---
+// --- Lógica de Listagem (Com Paginação) ---
+
 async function loadVideos() {
     const tbody = document.getElementById("videoTableBody");
     if (!tbody) return;
@@ -121,7 +162,6 @@ async function loadVideos() {
 
         const res = await fetch(`${API_VIDEO}/list`, {
             method: "GET",
-            // USANDO SPREAD OPERATOR AQUI
             headers: {
                 ...authHeaders,
                 "Content-Type": "application/json"
@@ -132,44 +172,11 @@ async function loadVideos() {
         if (!res.ok) throw new Error("Erro ao buscar lista");
 
         const data = await res.json();
-        const videos = data.items || [];
+        // Salva todos os vídeos na variável global
+        allVideos = data.items || [];
 
-        tbody.innerHTML = "";
-
-        if (videos.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="4" class="text-center">Nenhum vídeo encontrado.</td></tr>';
-            return;
-        }
-
-        videos.forEach(v => {
-            const statusBadge = getStatusBadge(v.status);
-            
-            const downloadUrl = v.downloadUrl || v.download_url;
-            const downloadBtn = downloadUrl 
-                ? `<a href="${downloadUrl}" target="_blank" class="btn btn-sm btn-outline-success">
-                     <i class="bi bi-download"></i> Download
-                   </a>` 
-                : '<span class="text-muted small">Aguardando...</span>';
-            
-            let dateStr = "-";
-            if (v.created_at) {
-                try {
-                    dateStr = new Date(v.created_at).toLocaleString('pt-BR', {
-                        day: '2-digit', month: '2-digit', year: 'numeric',
-                        hour: '2-digit', minute: '2-digit'
-                    });
-                } catch (e) { console.error("Data inválida", v.created_at); }
-            }
-
-            tbody.innerHTML += `
-                <tr>
-                    <td class="fw-medium">${v.filename}</td>
-                    <td>${statusBadge}</td>
-                    <td>${dateStr}</td>
-                    <td>${downloadBtn}</td>
-                </tr>
-            `;
-        });
+        // Renderiza a página atual
+        renderTable();
 
     } catch (err) {
         console.error(err);
@@ -177,7 +184,71 @@ async function loadVideos() {
     }
 }
 
+function renderTable() {
+    const tbody = document.getElementById("videoTableBody");
+    const controls = document.getElementById("paginationControls");
+    const btnPrev = document.getElementById("btnPrevPage");
+    const btnNext = document.getElementById("btnNextPage");
+    const indicator = document.getElementById("pageIndicator");
+
+    tbody.innerHTML = "";
+
+    if (allVideos.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center">Nenhum vídeo encontrado.</td></tr>';
+        controls.classList.add("d-none");
+        return;
+    }
+
+    // Calcula paginação
+    const totalPages = Math.ceil(allVideos.length / itemsPerPage);
+    const start = (currentPage - 1) * itemsPerPage;
+    const end = start + itemsPerPage;
+    const pageItems = allVideos.slice(start, end);
+
+    // Exibe/Oculta controles
+    if (totalPages > 1) {
+        controls.classList.remove("d-none");
+        indicator.textContent = `Página ${currentPage} de ${totalPages}`;
+        btnPrev.disabled = currentPage === 1;
+        btnNext.disabled = currentPage === totalPages;
+    } else {
+        controls.classList.add("d-none");
+    }
+
+    // Renderiza linhas
+    pageItems.forEach(v => {
+        const statusBadge = getStatusBadge(v.status);
+        
+        const downloadUrl = v.downloadUrl || v.download_url;
+        const downloadBtn = downloadUrl 
+            ? `<a href="${downloadUrl}" target="_blank" class="btn btn-sm btn-outline-success">
+                    <i class="bi bi-download"></i> Download
+                </a>` 
+            : '<span class="text-muted small">Aguardando...</span>';
+        
+        let dateStr = "-";
+        if (v.created_at) {
+            try {
+                dateStr = new Date(v.created_at).toLocaleString('pt-BR', {
+                    day: '2-digit', month: '2-digit', year: 'numeric',
+                    hour: '2-digit', minute: '2-digit'
+                });
+            } catch (e) { console.error("Data inválida", v.created_at); }
+        }
+
+        tbody.innerHTML += `
+            <tr>
+                <td class="fw-medium">${v.filename}</td>
+                <td>${statusBadge}</td>
+                <td>${dateStr}</td>
+                <td>${downloadBtn}</td>
+            </tr>
+        `;
+    });
+}
+
 // --- Helpers ---
+
 function getStatusBadge(status) {
     const s = (status || "").toLowerCase();
     
@@ -187,13 +258,18 @@ function getStatusBadge(status) {
     if (s === "processed" || s === "concluido") {
         color = "success";      
         label = "CONCLUÍDO";
-    } else if (s === "processing") {
+    } 
+    else if (s === "processing") {
         color = "info text-dark"; 
         label = "EM PROCESSAMENTO";
-    } else if (s === "pending" || s === "pending_upload") {
+    } 
+    // CORREÇÃO AQUI: Adicionado 'queued' e mapeado para Warning (Amarelo)
+    else if (s === "pending" || s === "pending_upload" || s === "queued") {
         color = "warning text-dark"; 
-        label = "PENDENTE";
-    } else if (s === "error" || s === "erro") {
+        // Tradução amigável
+        label = (s === "queued") ? "NA FILA" : "PENDENTE";
+    } 
+    else if (s === "error" || s === "erro" || s === "upload_failed") {
         color = "danger";       
         label = "ERRO";
     }
@@ -206,8 +282,10 @@ function toggleLoader(show) {
     if (loader) loader.style.display = show ? "flex" : "none";
 }
 
+// --- Inicialização ---
+
 document.addEventListener("DOMContentLoaded", () => {
-    setupUploadButton();
+    setupUI();
 
     if (document.getElementById("videoTableBody")) {
         loadVideos();
@@ -216,7 +294,10 @@ document.addEventListener("DOMContentLoaded", () => {
         if(btnUpload) btnUpload.addEventListener("click", uploadVideo);
 
         const btnRefresh = document.getElementById("btnRefresh");
-        if(btnRefresh) btnRefresh.addEventListener("click", loadVideos);
+        if(btnRefresh) btnRefresh.addEventListener("click", () => {
+            currentPage = 1; // Reseta para primeira página ao atualizar
+            loadVideos();
+        });
         
         const btnLogout = document.getElementById("btnLogout");
         if(btnLogout) {
