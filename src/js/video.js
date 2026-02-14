@@ -19,9 +19,44 @@ function getAuthHeaders() {
 }
 
 function handleAuthError() {
+    // Aqui também podemos usar o showError se quisermos evitar alert no logout forçado,
+    // mas o padrão é redirecionar, então alert + redirect está ok.
     alert("Sessão expirada. Faça login novamente.");
     localStorage.removeItem("token");
     window.location.href = "login.html";
+}
+
+// --- Helpers de Mensagem (Novo) ---
+
+function showError(message) {
+    const msgDiv = document.getElementById("uploadMsg");
+    if (msgDiv) {
+        msgDiv.innerHTML = `
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                <i class="bi bi-exclamation-triangle-fill me-2"></i> ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        `;
+    }
+}
+
+function showSuccess(message) {
+    const msgDiv = document.getElementById("uploadMsg");
+    if (msgDiv) {
+        msgDiv.innerHTML = `
+            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                <i class="bi bi-check-circle-fill me-2"></i> ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        `;
+    }
+}
+
+function clearError() {
+    const msgDiv = document.getElementById("uploadMsg");
+    if (msgDiv) {
+        msgDiv.innerHTML = "";
+    }
 }
 
 // --- Lógica de UI (Botão Enviar e Paginação) ---
@@ -33,6 +68,10 @@ function setupUI() {
     // Upload Button Logic
     if (input && btnUpload) {
         input.addEventListener("change", () => {
+            // Limpa mensagens anteriores ao selecionar novo arquivo
+            clearError();
+            
+            // Habilita/Desabilita botão
             btnUpload.disabled = input.files.length === 0;
         });
     }
@@ -52,18 +91,24 @@ function changePage(delta) {
     }
 }
 
-// --- Lógica de Upload (Com Validação) ---
+// --- Lógica de Upload (Com Validação Visual) ---
 
 async function uploadVideo() {
     const input = document.getElementById("videoInput");
     const btn = document.getElementById("btnUpload");
     const file = input.files[0];
     
-    if (!file) return alert("Selecione um arquivo!");
+    // Limpa mensagens anteriores
+    clearError();
+
+    if (!file) {
+        showError("Selecione um arquivo para enviar.");
+        return;
+    }
 
     // 1. Validação de Tipo (MP4)
     if (file.type !== "video/mp4") {
-        alert("Formato inválido! Por favor, envie apenas arquivos .mp4");
+        showError("Formato inválido! O arquivo deve ser <strong>.mp4</strong>.");
         input.value = ""; // Limpa o arquivo inválido
         btn.disabled = true;
         return;
@@ -72,7 +117,7 @@ async function uploadVideo() {
     // 2. Validação de Tamanho (100MB)
     const MAX_SIZE_MB = 100;
     if (file.size > MAX_SIZE_MB * 1024 * 1024) {
-        alert(`Arquivo muito grande! O limite é de ${MAX_SIZE_MB}MB.`);
+        showError(`Arquivo muito grande! O limite é de <strong>${MAX_SIZE_MB}MB</strong>.`);
         input.value = "";
         btn.disabled = true;
         return;
@@ -101,7 +146,11 @@ async function uploadVideo() {
         });
 
         if (reqInit.status === 401) return handleAuthError();
-        if (!reqInit.ok) throw new Error("Falha ao iniciar upload");
+        
+        if (!reqInit.ok) {
+            const errData = await reqInit.json().catch(() => ({}));
+            throw new Error(errData.detail || "Falha ao iniciar upload");
+        }
 
         const { upload_url, task_id } = await reqInit.json();
 
@@ -132,7 +181,8 @@ async function uploadVideo() {
         if (reqConfirm.status === 401) return handleAuthError();
         if (!reqConfirm.ok) throw new Error("Falha ao confirmar upload");
 
-        alert("Vídeo enviado com sucesso!");
+        // Sucesso!
+        showSuccess("Vídeo enviado com sucesso! O processamento iniciará em breve.");
         input.value = ""; 
         
         // Recarrega a lista e volta para a primeira página
@@ -141,7 +191,8 @@ async function uploadVideo() {
 
     } catch (err) {
         console.error(err);
-        alert("Erro no fluxo de upload: " + err.message);
+        showError("Erro no envio: " + err.message);
+        // Em caso de erro de rede, permite tentar de novo se o arquivo ainda estiver lá
         if (input.files.length > 0) btn.disabled = false;
     } finally {
         toggleLoader(false);
@@ -263,10 +314,8 @@ function getStatusBadge(status) {
         color = "info text-dark"; 
         label = "EM PROCESSAMENTO";
     } 
-    // CORREÇÃO AQUI: Adicionado 'queued' e mapeado para Warning (Amarelo)
     else if (s === "pending" || s === "pending_upload" || s === "queued") {
         color = "warning text-dark"; 
-        // Tradução amigável
         label = (s === "queued") ? "NA FILA" : "PENDENTE";
     } 
     else if (s === "error" || s === "erro" || s === "upload_failed") {
