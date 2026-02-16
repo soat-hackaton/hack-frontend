@@ -78,6 +78,19 @@ function setupLoginUI() {
 }
 
 // --- Funções Auxiliares ---
+function updateGreeting(token) {
+    try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        const userName = payload.name || "";
+        
+        const greetingEl = document.getElementById("userGreeting");
+        if (greetingEl) {
+            greetingEl.textContent = `Olá ${userName}, que vídeo iremos processar hoje?`;
+        }
+    } catch (e) {
+        console.error("Erro ao ler nome do token", e);
+    }
+}
 
 function clearFeedback() {
     const feedbackMsg = document.getElementById("feedbackMsg");
@@ -101,6 +114,10 @@ async function handleLogin(e) {
     const email = document.getElementById("loginEmail").value;
     const password = document.getElementById("loginPassword").value;
 
+    await performLogin(email, password);
+}
+
+async function performLogin(email, password) {
     showFeedback("Autenticando...", "alert-info");
 
     try {
@@ -115,7 +132,7 @@ async function handleLogin(e) {
         if (!response.ok) throw new Error(data.message || "Erro ao fazer login");
 
         localStorage.setItem("token", data.access_token || data.token);
-        window.location.href = "/"; // Vai para Dashboard
+        window.location.href = "/";
 
     } catch (error) {
         showFeedback(error.message, "alert-danger");
@@ -130,7 +147,7 @@ async function handleSignUp(e) {
     const confirmPassword = document.getElementById("regConfirmPassword").value;
 
     if (password !== confirmPassword) {
-        showFeedback("As senhas não coincidem!", "alert-warning");
+        showFeedback("As senhas não coincidem!", "alert-error");
         return;
     }
 
@@ -147,11 +164,8 @@ async function handleSignUp(e) {
 
         if (!response.ok) throw new Error(data.message || "Erro ao criar conta");
 
-        showFeedback("Conta criada! Redirecionando...", "alert-success");
-        
-        setTimeout(() => {
-            document.getElementById("linkToLogin").click();
-        }, 1500);
+        showFeedback("Conta criada! Entrando...", "alert-success");
+        await performLogin(email, password);
 
     } catch (error) {
         showFeedback(error.message, "alert-danger");
