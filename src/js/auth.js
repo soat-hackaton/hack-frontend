@@ -38,6 +38,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const btnLogout = document.getElementById("btnLogout");
     if (btnLogout) {
         btnLogout.addEventListener("click", logout);
+        updateGreeting(token);
     }
 });
 
@@ -164,8 +165,11 @@ async function handleSignUp(e) {
 
         if (!response.ok) throw new Error(data.message || "Erro ao criar conta");
 
-        showFeedback("Conta criada! Entrando...", "alert-success");
-        await performLogin(email, password);
+        showFeedback("Conta criada com sucesso! Entrando...", "alert-success");
+
+        setTimeout(async () => {
+            await performLogin(email, password);
+        }, 2000);
 
     } catch (error) {
         showFeedback(error.message, "alert-danger");
