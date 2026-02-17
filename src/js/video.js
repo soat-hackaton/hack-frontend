@@ -287,7 +287,7 @@ function renderTable() {
         let btnDownload = "";
         if (isDone && downloadUrl) {
             btnDownload = `
-                <a href="${downloadUrl}" target="_blank" class="btn btn-sm btn-outline-success me-2" title="Baixar Vídeo">
+                <a href="${downloadUrl}" class="btn btn-sm btn-outline-success me-2" title="Baixar Vídeo" download>
                     <i class="bi bi-download"></i>
                 </a>`;
         } else {
@@ -297,7 +297,6 @@ function renderTable() {
                 </button>`;
         }
 
-        // 2. Botão Retry (Habilitado apenas se Erro)
         let btnRetry = "";
         if (isError) {
             btnRetry = `
