@@ -254,10 +254,39 @@ function renderTable() {
 
     pageItems.forEach(v => {
         const statusBadge = getStatusBadge(v.status);
+        
+        const s = (v.status || "").toLowerCase();
+        const isDone = (s === "done");
+        const isError = (s === "error");
+
         const downloadUrl = v.downloadUrl || v.download_url;
-        const downloadBtn = downloadUrl 
-            ? `<a href="${downloadUrl}" target="_blank" class="btn btn-sm btn-outline-success"><i class="bi bi-download"></i> Download</a>` 
-            : '<span class="text-muted small">Aguardando...</span>';
+
+        let btnDownload = "";
+        if (isDone && downloadUrl) {
+            btnDownload = `
+                <a href="${downloadUrl}" target="_blank" class="btn btn-sm btn-outline-success me-2" title="Baixar Vídeo">
+                    <i class="bi bi-download"></i>
+                </a>`;
+        } else {
+            btnDownload = `
+                <button class="btn btn-sm btn-outline-secondary me-2" disabled title="Download Indisponível">
+                    <i class="bi bi-download"></i>
+                </button>`;
+        }
+
+        // 2. Botão Retry (Habilitado apenas se Erro)
+        let btnRetry = "";
+        if (isError) {
+            btnRetry = `
+                <button class="btn btn-sm btn-outline-danger" title="Tentar Novamente">
+                    <i class="bi bi-arrow-clockwise"></i>
+                </button>`;
+        } else {
+            btnRetry = `
+                <button class="btn btn-sm btn-outline-secondary" disabled>
+                    <i class="bi bi-arrow-clockwise"></i>
+                </button>`;
+        }
         
         let dateStr = "-";
         if (v.created_at) {
@@ -274,7 +303,12 @@ function renderTable() {
                 <td class="fw-medium">${v.filename}</td>
                 <td>${statusBadge}</td>
                 <td>${dateStr}</td>
-                <td>${downloadBtn}</td>
+                <td>
+                    <div class="d-flex align-items-center">
+                        ${btnDownload}
+                        ${btnRetry}
+                    </div>
+                </td>
             </tr>
         `;
     });
