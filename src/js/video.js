@@ -85,7 +85,6 @@ function setupUI() {
     
     if (input && btnUpload) {
         input.addEventListener("change", () => {
-            // Limpa mensagens anteriores ao selecionar novo arquivo
             clearError();
             btnUpload.disabled = input.files.length === 0;
         });
@@ -112,7 +111,7 @@ async function uploadVideo() {
     const btn = document.getElementById("btnUpload");
     const file = input.files[0];
     
-    clearError(); // Garante que limpamos timers antigos
+    clearError();
 
     if (!file) {
         showError("Selecione um arquivo para enviar.");
@@ -139,11 +138,12 @@ async function uploadVideo() {
     toggleLoader(true);
     btn.disabled = true;
 
+    let task_id = null;
     try {
         const authHeaders = getAuthHeaders();
         if (!authHeaders) return;
 
-        // PASSO 1
+        // Criação de uma URL pré assinada para realizar o upload do arquivo no S3
         const reqInit = await fetch(`${API_VIDEO}/request-upload`, {
             method: "POST",
             headers: { ...authHeaders, "Content-Type": "application/json" },
@@ -157,9 +157,11 @@ async function uploadVideo() {
             throw new Error(errData.detail || "Falha ao iniciar upload");
         }
 
-        const { upload_url, task_id } = await reqInit.json();
+        const initData = await reqInit.json();
+        task_id = initData.task_id;
+        const upload_url = initData.upload_url;
 
-        // PASSO 2
+        // Realizar o upload para o S3 via URL pré assinada
         const s3Upload = await fetch(upload_url, {
             method: "PUT",
             headers: { "Content-Type": file.type },
@@ -168,7 +170,7 @@ async function uploadVideo() {
 
         if (!s3Upload.ok) throw new Error("Falha ao enviar arquivo para o S3");
 
-        // PASSO 3
+        // Confirmação que o arquivo está no S3
         const reqConfirm = await fetch(`${API_VIDEO}/confirm-upload`, {
             method: "POST",
             headers: { ...authHeaders, "Content-Type": "application/json" },
@@ -187,6 +189,27 @@ async function uploadVideo() {
     } catch (err) {
         console.error(err);
         showError("Erro no envio: " + err.message);
+
+        if (task_id) {
+            try {
+                const userEmail = getUserEmail();
+                if (userEmail) {
+                    await fetch(`${API_VIDEO}/${task_id}`, {
+                        method: "PATCH",
+                        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+                        body: JSON.stringify({ 
+                            status: "ERROR", 
+                            user_email: userEmail 
+                        })
+                    });
+                    console.log("Status da task atualizado para ERROR no backend");
+                    loadVideos();
+                }
+            } catch (apiError) {
+                console.warn("Falha ao reportar erro para o backend:", apiError);
+            }
+        }
+        
         if (input.files.length > 0) btn.disabled = false;
     } finally {
         toggleLoader(false);
@@ -343,6 +366,18 @@ function getStatusBadge(status) {
 function toggleLoader(show) {
     const loader = document.getElementById("loader");
     if (loader) loader.style.display = show ? "flex" : "none";
+}
+
+function getUserEmail() {
+    const token = localStorage.getItem("token");
+    if (!token) return null;
+    try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        return payload.email;
+    } catch (e) {
+        console.error("Erro ao extrair email do token:", e);
+        return null;
+    }
 }
 
 document.addEventListener("DOMContentLoaded", () => {
