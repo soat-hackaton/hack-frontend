@@ -1,6 +1,6 @@
 import { API_VIDEO } from './utils/api.js';
 import { getAuthHeaders, handleAuthError, getUserEmail, logout } from './utils/auth.js';
-import { showError, showSuccess, clearError, getStatusBadge, toggleLoader, toggleUploadProgress, updateUploadStep } from './utils/ui.js';
+import { showError, showSuccess, clearError, getStatusBadge, toggleLoader, toggleUploadProgress, updateUploadStep, createUploadProgressItem, clearUploadProgressItems } from './utils/ui.js';
 
 // --- Variáveis de Estado ---
 let allVideos = [];
@@ -16,7 +16,14 @@ function setupUI() {
     if (input && btnUpload) {
         input.addEventListener("change", () => {
             clearError();
-            btnUpload.disabled = input.files.length === 0;
+            if (input.files.length === 0) {
+                btnUpload.disabled = true;
+            } else if (input.files.length > 5) {
+                showError("Você pode selecionar no máximo 5 vídeos por vez.");
+                btnUpload.disabled = true;
+            } else {
+                btnUpload.disabled = false;
+            }
         });
     }
 
@@ -39,117 +46,162 @@ function changePage(delta) {
 async function uploadVideo() {
     const input = document.getElementById("videoInput");
     const btn = document.getElementById("btnUpload");
-    const file = input.files[0];
+    const files = Array.from(input.files);
 
     clearError();
 
-    if (!file) {
+    if (files.length === 0) {
         showError("Selecione um arquivo para enviar.");
         return;
     }
 
-    // 1. Validação de Tipo
-    if (file.type !== "video/mp4") {
-        showError("Formato inválido! O arquivo deve ser <strong>.mp4</strong>.");
-        input.value = "";
-        btn.disabled = true;
+    if (files.length > 5) {
+        showError("Você pode selecionar no máximo 5 vídeos por vez.");
         return;
     }
 
-    // 2. Validação de Tamanho
     const MAX_SIZE_MB = 100;
-    if (file.size > MAX_SIZE_MB * 1024 * 1024) {
-        showError(`Arquivo muito grande! O limite é de <strong>${MAX_SIZE_MB}MB</strong>.`);
-        input.value = "";
-        btn.disabled = true;
-        return;
+    for (const file of files) {
+        if (file.type !== "video/mp4") {
+            showError(`O arquivo <strong>${file.name}</strong> possui formato inválido! Deve ser .mp4.`);
+            input.value = "";
+            btn.disabled = true;
+            return;
+        }
+        if (file.size > MAX_SIZE_MB * 1024 * 1024) {
+            showError(`O arquivo <strong>${file.name}</strong> é muito grande! O limite é de ${MAX_SIZE_MB}MB.`);
+            input.value = "";
+            btn.disabled = true;
+            return;
+        }
     }
 
+    clearUploadProgressItems();
+    files.forEach((file, index) => {
+        createUploadProgressItem(index, file.name);
+    });
     toggleUploadProgress(true);
-    updateUploadStep("Iniciando requisição...", 10);
     btn.disabled = true;
 
-    let task_id = null;
-    try {
-        const authHeaders = getAuthHeaders();
-        if (!authHeaders) return;
+    const authHeaders = getAuthHeaders();
+    if (!authHeaders) return;
 
-        // Criação de uma URL pré assinada para realizar o upload do arquivo no S3
-        const reqInit = await fetch(`${API_VIDEO}/request-upload`, {
-            method: "POST",
-            headers: { ...authHeaders, "Content-Type": "application/json" },
-            body: JSON.stringify({ filename: file.name, content_type: file.type })
-        });
+    let successFiles = [];
+    let errorFiles = [];
 
-        if (reqInit.status === 401) return handleAuthError();
+    const uploadPromises = files.map(async (file, index) => {
+        let task_id = null;
+        try {
+            updateUploadStep(index, "Iniciando requisição...", 10);
 
-        if (!reqInit.ok) {
-            const errData = await reqInit.json().catch(() => ({}));
-            throw new Error(errData.detail || "Falha ao iniciar upload");
-        }
+            const reqInit = await fetch(`${API_VIDEO}/request-upload`, {
+                method: "POST",
+                headers: { ...authHeaders, "Content-Type": "application/json" },
+                body: JSON.stringify({ filename: file.name, content_type: file.type })
+            });
 
-        const initData = await reqInit.json();
-        task_id = initData.task_id;
-        const upload_url = initData.upload_url;
+            if (reqInit.status === 401) {
+                handleAuthError();
+                return;
+            }
 
-        updateUploadStep("Enviando arquivo...", 40);
+            if (!reqInit.ok) {
+                const errData = await reqInit.json().catch(() => ({}));
+                throw new Error(errData.detail || "Falha ao iniciar upload");
+            }
 
-        // Realizar o upload para o S3 via URL pré assinada
-        const s3Upload = await fetch(upload_url, {
-            method: "PUT",
-            headers: { "Content-Type": file.type },
-            body: file
-        });
+            const initData = await reqInit.json();
+            task_id = initData.task_id;
+            const upload_url = initData.upload_url;
 
-        if (!s3Upload.ok) throw new Error("Falha ao enviar arquivo para o S3");
+            updateUploadStep(index, "Enviando arquivo...", 40);
 
-        updateUploadStep("Confirmando envio...", 80);
+            const s3Upload = await fetch(upload_url, {
+                method: "PUT",
+                headers: { "Content-Type": file.type },
+                body: file
+            });
 
-        // Confirmação que o arquivo está no S3
-        const reqConfirm = await fetch(`${API_VIDEO}/confirm-upload`, {
-            method: "POST",
-            headers: { ...authHeaders, "Content-Type": "application/json" },
-            body: JSON.stringify({ task_id: task_id })
-        });
+            if (!s3Upload.ok) throw new Error("Falha ao enviar arquivo para o S3");
 
-        if (reqConfirm.status === 401) return handleAuthError();
-        if (!reqConfirm.ok) throw new Error("Falha ao confirmar upload");
+            updateUploadStep(index, "Confirmando envio...", 80);
 
-        updateUploadStep("Concluído!", 100);
-        showSuccess("Vídeo enviado com sucesso! O processamento iniciará em breve.");
-        input.value = "";
+            const reqConfirm = await fetch(`${API_VIDEO}/confirm-upload`, {
+                method: "POST",
+                headers: { ...authHeaders, "Content-Type": "application/json" },
+                body: JSON.stringify({ task_id: task_id })
+            });
 
-        currentPage = 1;
-        loadVideos();
+            if (reqConfirm.status === 401) {
+                handleAuthError();
+                return;
+            }
+            if (!reqConfirm.ok) throw new Error("Falha ao confirmar upload");
 
-    } catch (err) {
-        console.error(err);
-        showError("Erro no envio: " + err.message);
+            updateUploadStep(index, "Concluído!", 100);
+            successFiles.push(file.name);
 
-        if (task_id) {
-            try {
-                const userEmail = getUserEmail();
-                if (userEmail) {
-                    await fetch(`${API_VIDEO}/${task_id}`, {
-                        method: "PATCH",
-                        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            status: "ERROR",
-                            user_email: userEmail
-                        })
-                    });
-                    console.log("Status da task atualizado para ERROR no backend");
-                    loadVideos();
+            const itemContainer = document.getElementById(`uploadItem_${index}`);
+            if (itemContainer) {
+                const spinner = itemContainer.querySelector(".spinner-border");
+                if (spinner) spinner.classList.add("d-none");
+            }
+
+        } catch (err) {
+            console.error(err);
+            updateUploadStep(index, "Erro: " + err.message, 0);
+            errorFiles.push(file.name);
+
+            const progressBar = document.getElementById(`uploadProgressBar_${index}`);
+            if (progressBar) {
+                progressBar.classList.remove("bg-success");
+                progressBar.classList.add("bg-danger");
+                progressBar.style.width = "100%";
+            }
+
+            if (task_id) {
+                try {
+                    const userEmail = getUserEmail();
+                    if (userEmail) {
+                        await fetch(`${API_VIDEO}/${task_id}`, {
+                            method: "PATCH",
+                            headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                                status: "ERROR",
+                                user_email: userEmail
+                            })
+                        });
+                        console.log("Status da task atualizado para ERROR no backend para o arquivo", file.name);
+                    }
+                } catch (apiError) {
+                    console.warn("Falha ao reportar erro para o backend:", apiError);
                 }
-            } catch (apiError) {
-                console.warn("Falha ao reportar erro para o backend:", apiError);
             }
         }
+    });
 
-        if (input.files.length > 0) btn.disabled = false;
-    } finally {
-        setTimeout(() => toggleUploadProgress(false), 2000);
+    await Promise.all(uploadPromises);
+
+    input.value = "";
+    if (successFiles.length > 0 && errorFiles.length === 0) {
+        if (successFiles.length === 1) {
+            showSuccess(`Vídeo enviado com sucesso: <strong>${successFiles[0]}</strong>. O processamento iniciará em breve.`);
+        } else {
+            showSuccess(`<strong>${successFiles.length}</strong> vídeos enviados com sucesso:<br>- ${successFiles.join("<br>- ")}`);
+        }
+    } else if (successFiles.length > 0 && errorFiles.length > 0) {
+        showSuccess(`Alguns vídeos enviados: <br>- ${successFiles.join("<br>- ")}`);
+        showError(`Erro ao enviar: <br>- ${errorFiles.join("<br>- ")}`);
+    } else if (errorFiles.length > 0) {
+        showError(`Erro ao enviar todos os arquivos: <br>- ${errorFiles.join("<br>- ")}`);
     }
+
+    currentPage = 1;
+    loadVideos();
+
+    setTimeout(() => {
+        toggleUploadProgress(false);
+    }, 5000);
 }
 
 // --- Lógica de Listagem ---

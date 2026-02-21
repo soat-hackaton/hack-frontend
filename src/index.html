@@ -41,27 +41,19 @@
                 <i class="bi bi-cloud-upload"></i> Novo Processamento
             </div>
             <div class="card-body">
-                <label for="videoInput" class="form-label fw-bold">Selecione um vídeo para processar</label>
+                <label for="videoInput" class="form-label fw-bold">Selecione até 5 vídeos para processar</label>
 
                 <div class="input-group mb-1">
-                    <input type="file" class="form-control" id="videoInput" accept="video/mp4">
+                    <input type="file" class="form-control" id="videoInput" accept="video/mp4" multiple>
                     <button class="btn btn-success" type="button" id="btnUpload" disabled>Enviar</button>
                 </div>
 
-                <small class="text-muted">Formato suportado: .mp4 (Máx 100MB)</small>
+                <small class="text-muted">Formato suportado: .mp4 (Máx 100MB por arquivo, até 5 arquivos)</small>
 
                 <div id="uploadMsg" class="mt-2"></div>
 
                 <div id="uploadProgress" class="mt-3 d-none">
-                    <div class="d-flex align-items-center mb-2">
-                        <div class="spinner-border spinner-border-sm text-success me-2" role="status"></div>
-                        <strong id="uploadStepText">Iniciando...</strong>
-                    </div>
-                    <div class="progress" style="height: 10px;">
-                        <div id="uploadProgressBar"
-                            class="progress-bar bg-success progress-bar-striped progress-bar-animated"
-                            role="progressbar" style="width: 0%"></div>
-                    </div>
+                    <!-- Progress items inserted dynamically -->
                 </div>
             </div>
         </div>

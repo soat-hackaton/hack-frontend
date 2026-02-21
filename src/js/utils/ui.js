@@ -106,12 +106,37 @@ export function toggleUploadProgress(show) {
     }
 }
 
-export function updateUploadStep(text, percentage) {
-    const stepText = document.getElementById("uploadStepText");
-    const progressBar = document.getElementById("uploadProgressBar");
+export function updateUploadStep(fileId, text, percentage) {
+    const stepText = document.getElementById(`uploadStepText_${fileId}`);
+    const progressBar = document.getElementById(`uploadProgressBar_${fileId}`);
     if (stepText) stepText.textContent = text;
     if (progressBar) {
         progressBar.style.width = percentage + "%";
         progressBar.setAttribute("aria-valuenow", percentage);
     }
+}
+
+export function createUploadProgressItem(fileId, filename) {
+    const progressContainer = document.getElementById("uploadProgress");
+    if (!progressContainer) return;
+
+    const itemHtml = `
+        <div class="mb-3" id="uploadItem_${fileId}">
+            <div class="d-flex align-items-center mb-2">
+                <div class="spinner-border spinner-border-sm text-success me-2" role="status"></div>
+                <strong>${filename}: </strong> <span id="uploadStepText_${fileId}" class="ms-1">Iniciando...</span>
+            </div>
+            <div class="progress" style="height: 10px;">
+                <div id="uploadProgressBar_${fileId}"
+                    class="progress-bar bg-success progress-bar-striped progress-bar-animated"
+                    role="progressbar" style="width: 0%"></div>
+            </div>
+        </div>
+    `;
+    progressContainer.innerHTML += itemHtml;
+}
+
+export function clearUploadProgressItems() {
+    const progressContainer = document.getElementById("uploadProgress");
+    if (progressContainer) progressContainer.innerHTML = "";
 }
