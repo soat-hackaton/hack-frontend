@@ -94,3 +94,24 @@ export function toggleLoader(show) {
     const loader = document.getElementById("loader");
     if (loader) loader.style.display = show ? "flex" : "none";
 }
+
+export function toggleUploadProgress(show) {
+    const progress = document.getElementById("uploadProgress");
+    if (progress) {
+        if (show) {
+            progress.classList.remove("d-none");
+        } else {
+            progress.classList.add("d-none");
+        }
+    }
+}
+
+export function updateUploadStep(text, percentage) {
+    const stepText = document.getElementById("uploadStepText");
+    const progressBar = document.getElementById("uploadProgressBar");
+    if (stepText) stepText.textContent = text;
+    if (progressBar) {
+        progressBar.style.width = percentage + "%";
+        progressBar.setAttribute("aria-valuenow", percentage);
+    }
+}

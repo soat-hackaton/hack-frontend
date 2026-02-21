@@ -1,6 +1,6 @@
 import { API_VIDEO } from './utils/api.js';
 import { getAuthHeaders, handleAuthError, getUserEmail, logout } from './utils/auth.js';
-import { showError, showSuccess, clearError, getStatusBadge, toggleLoader } from './utils/ui.js';
+import { showError, showSuccess, clearError, getStatusBadge, toggleLoader, toggleUploadProgress, updateUploadStep } from './utils/ui.js';
 
 // --- Variáveis de Estado ---
 let allVideos = [];
@@ -65,7 +65,8 @@ async function uploadVideo() {
         return;
     }
 
-    toggleLoader(true);
+    toggleUploadProgress(true);
+    updateUploadStep("Iniciando requisição...", 10);
     btn.disabled = true;
 
     let task_id = null;
@@ -91,6 +92,8 @@ async function uploadVideo() {
         task_id = initData.task_id;
         const upload_url = initData.upload_url;
 
+        updateUploadStep("Enviando arquivo...", 40);
+
         // Realizar o upload para o S3 via URL pré assinada
         const s3Upload = await fetch(upload_url, {
             method: "PUT",
@@ -99,6 +102,8 @@ async function uploadVideo() {
         });
 
         if (!s3Upload.ok) throw new Error("Falha ao enviar arquivo para o S3");
+
+        updateUploadStep("Confirmando envio...", 80);
 
         // Confirmação que o arquivo está no S3
         const reqConfirm = await fetch(`${API_VIDEO}/confirm-upload`, {
@@ -110,6 +115,7 @@ async function uploadVideo() {
         if (reqConfirm.status === 401) return handleAuthError();
         if (!reqConfirm.ok) throw new Error("Falha ao confirmar upload");
 
+        updateUploadStep("Concluído!", 100);
         showSuccess("Vídeo enviado com sucesso! O processamento iniciará em breve.");
         input.value = "";
 
@@ -142,7 +148,7 @@ async function uploadVideo() {
 
         if (input.files.length > 0) btn.disabled = false;
     } finally {
-        toggleLoader(false);
+        setTimeout(() => toggleUploadProgress(false), 2000);
     }
 }
 
