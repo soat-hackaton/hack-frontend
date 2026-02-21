@@ -287,8 +287,9 @@ function renderTable() {
 
         let btnRetry = "";
         if (isError) {
+            const tId = v.task_id || v.id || "";
             btnRetry = `
-                <button class="btn btn-sm btn-outline-danger" title="Tentar Novamente">
+                <button class="btn btn-sm btn-outline-danger btn-retry" data-task-id="${tId}" title="Tentar Novamente">
                     <i class="bi bi-arrow-clockwise"></i>
                 </button>`;
         } else {
@@ -324,6 +325,34 @@ function renderTable() {
     });
 }
 
+async function retryVideo(taskId) {
+    toggleLoader(true);
+    try {
+        const authHeaders = getAuthHeaders();
+        const userEmail = getUserEmail();
+
+        const res = await fetch(`${API_VIDEO}/${taskId}`, {
+            method: "PATCH",
+            headers: { ...authHeaders, "Content-Type": "application/json" },
+            body: JSON.stringify({
+                status: "QUEUED",
+                user_email: userEmail
+            })
+        });
+
+        if (res.status === 401) return handleAuthError();
+        if (!res.ok) throw new Error("Erro ao tentar processar novamente");
+
+        showSuccess("Vídeo reenviado para a fila de processamento!");
+        loadVideos();
+    } catch (err) {
+        console.error(err);
+        showError("Falha ao reenviar o vídeo para processamento.");
+    } finally {
+        toggleLoader(false);
+    }
+}
+
 document.addEventListener("DOMContentLoaded", () => {
     setupUI();
     if (document.getElementById("videoTableBody")) {
@@ -334,5 +363,15 @@ document.addEventListener("DOMContentLoaded", () => {
         if (btnRefresh) btnRefresh.addEventListener("click", () => { currentPage = 1; loadVideos(); });
         const btnLogout = document.getElementById("btnLogout");
         if (btnLogout) btnLogout.addEventListener("click", logout);
+
+        document.getElementById("videoTableBody").addEventListener("click", (e) => {
+            const retryBtn = e.target.closest(".btn-retry");
+            if (retryBtn) {
+                const taskId = retryBtn.getAttribute("data-task-id");
+                if (taskId) {
+                    retryVideo(taskId);
+                }
+            }
+        });
     }
 });
