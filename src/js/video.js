@@ -325,8 +325,11 @@ function renderTable() {
     });
 }
 
-async function retryVideo(taskId) {
-    toggleLoader(true);
+async function retryVideo(taskId, btnElement) {
+    const originalHtml = btnElement.innerHTML;
+    btnElement.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>';
+    btnElement.disabled = true;
+
     try {
         const authHeaders = getAuthHeaders();
         const userEmail = getUserEmail();
@@ -348,8 +351,8 @@ async function retryVideo(taskId) {
     } catch (err) {
         console.error(err);
         showError("Falha ao reenviar o vídeo para processamento.");
-    } finally {
-        toggleLoader(false);
+        btnElement.innerHTML = originalHtml;
+        btnElement.disabled = false;
     }
 }
 
@@ -369,7 +372,7 @@ document.addEventListener("DOMContentLoaded", () => {
             if (retryBtn) {
                 const taskId = retryBtn.getAttribute("data-task-id");
                 if (taskId) {
-                    retryVideo(taskId);
+                    retryVideo(taskId, retryBtn);
                 }
             }
         });
