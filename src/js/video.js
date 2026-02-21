@@ -1,88 +1,18 @@
-const API_VIDEO = "/api/video";
+import { API_VIDEO } from './utils/api.js';
+import { getAuthHeaders, handleAuthError, getUserEmail, logout } from './utils/auth.js';
+import { showError, showSuccess, clearError, getStatusBadge, toggleLoader } from './utils/ui.js';
 
 // --- Variáveis de Estado ---
 let allVideos = [];
 let currentPage = 1;
 const itemsPerPage = 10;
-let msgTimeout = null; // Variável para controlar o tempo da mensagem
-
-// --- Gerenciamento de Autenticação ---
-
-function getAuthHeaders() {
-    const token = localStorage.getItem("token");
-    if (!token) {
-        window.location.href = "login.html";
-        return null;
-    }
-    return {
-        "Authorization": `Bearer ${token}`
-    };
-}
-
-function handleAuthError() {
-    alert("Sessão expirada. Faça login novamente.");
-    localStorage.removeItem("token");
-    window.location.href = "login.html";
-}
-
-// --- Helpers de Mensagem (Atualizados) ---
-
-function showError(message) {
-    const msgDiv = document.getElementById("uploadMsg");
-    if (msgDiv) {
-        // Se já tiver um timer rodando, cancela ele para não sumir a nova mensagem cedo demais
-        if (msgTimeout) clearTimeout(msgTimeout);
-
-        // Removemos o botão close e a classe alert-dismissible
-        msgDiv.innerHTML = `
-            <div class="alert alert-danger fade show" role="alert">
-                <i class="bi bi-exclamation-triangle-fill me-2"></i> ${message}
-            </div>
-        `;
-
-        // Agenda o desaparecimento para 5 segundos
-        msgTimeout = setTimeout(() => {
-            msgDiv.innerHTML = "";
-            msgTimeout = null;
-        }, 5000);
-    }
-}
-
-function showSuccess(message) {
-    const msgDiv = document.getElementById("uploadMsg");
-    if (msgDiv) {
-        if (msgTimeout) clearTimeout(msgTimeout);
-
-        msgDiv.innerHTML = `
-            <div class="alert alert-success fade show" role="alert">
-                <i class="bi bi-check-circle-fill me-2"></i> ${message}
-            </div>
-        `;
-
-        msgTimeout = setTimeout(() => {
-            msgDiv.innerHTML = "";
-            msgTimeout = null;
-        }, 5000);
-    }
-}
-
-function clearError() {
-    const msgDiv = document.getElementById("uploadMsg");
-    if (msgDiv) {
-        msgDiv.innerHTML = "";
-    }
-    if (msgTimeout) {
-        clearTimeout(msgTimeout);
-        msgTimeout = null;
-    }
-}
 
 // --- Lógica de UI (Botão Enviar e Paginação) ---
 
 function setupUI() {
     const input = document.getElementById("videoInput");
     const btnUpload = document.getElementById("btnUpload");
-    
+
     if (input && btnUpload) {
         input.addEventListener("change", () => {
             clearError();
@@ -110,7 +40,7 @@ async function uploadVideo() {
     const input = document.getElementById("videoInput");
     const btn = document.getElementById("btnUpload");
     const file = input.files[0];
-    
+
     clearError();
 
     if (!file) {
@@ -121,7 +51,7 @@ async function uploadVideo() {
     // 1. Validação de Tipo
     if (file.type !== "video/mp4") {
         showError("Formato inválido! O arquivo deve ser <strong>.mp4</strong>.");
-        input.value = ""; 
+        input.value = "";
         btn.disabled = true;
         return;
     }
@@ -151,7 +81,7 @@ async function uploadVideo() {
         });
 
         if (reqInit.status === 401) return handleAuthError();
-        
+
         if (!reqInit.ok) {
             const errData = await reqInit.json().catch(() => ({}));
             throw new Error(errData.detail || "Falha ao iniciar upload");
@@ -181,10 +111,10 @@ async function uploadVideo() {
         if (!reqConfirm.ok) throw new Error("Falha ao confirmar upload");
 
         showSuccess("Vídeo enviado com sucesso! O processamento iniciará em breve.");
-        input.value = ""; 
-        
+        input.value = "";
+
         currentPage = 1;
-        loadVideos(); 
+        loadVideos();
 
     } catch (err) {
         console.error(err);
@@ -197,9 +127,9 @@ async function uploadVideo() {
                     await fetch(`${API_VIDEO}/${task_id}`, {
                         method: "PATCH",
                         headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
-                        body: JSON.stringify({ 
-                            status: "ERROR", 
-                            user_email: userEmail 
+                        body: JSON.stringify({
+                            status: "ERROR",
+                            user_email: userEmail
                         })
                     });
                     console.log("Status da task atualizado para ERROR no backend");
@@ -209,7 +139,7 @@ async function uploadVideo() {
                 console.warn("Falha ao reportar erro para o backend:", apiError);
             }
         }
-        
+
         if (input.files.length > 0) btn.disabled = false;
     } finally {
         toggleLoader(false);
@@ -277,7 +207,7 @@ function renderTable() {
 
     pageItems.forEach(v => {
         const statusBadge = getStatusBadge(v.status);
-        
+
         const s = (v.status || "").toLowerCase();
         const isDone = (s === "done");
         const isError = (s === "error");
@@ -309,7 +239,7 @@ function renderTable() {
                     <i class="bi bi-arrow-clockwise"></i>
                 </button>`;
         }
-        
+
         let dateStr = "-";
         if (v.created_at) {
             try {
@@ -336,61 +266,15 @@ function renderTable() {
     });
 }
 
-function getStatusBadge(status) {
-    const s = (status || "").toLowerCase();
-    
-    let color = "secondary";
-    let label = status;
-
-    if (s === "done") {
-        color = "success";      
-        label = "CONCLUÍDO";
-    } 
-    else if (s === "processing") {
-        color = "info text-dark"; 
-        label = "PROCESSANDO";
-    } 
-    else if (s === "queued") {
-        color = "warning text-dark"; 
-        label = "NA FILA";
-    } 
-    else if (s === "error") {
-        color = "danger";       
-        label = "ERRO";
-    }
-
-    return `<span class="badge bg-${color}">${label}</span>`;
-}
-
-function toggleLoader(show) {
-    const loader = document.getElementById("loader");
-    if (loader) loader.style.display = show ? "flex" : "none";
-}
-
-function getUserEmail() {
-    const token = localStorage.getItem("token");
-    if (!token) return null;
-    try {
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        return payload.email;
-    } catch (e) {
-        console.error("Erro ao extrair email do token:", e);
-        return null;
-    }
-}
-
 document.addEventListener("DOMContentLoaded", () => {
     setupUI();
     if (document.getElementById("videoTableBody")) {
         loadVideos();
         const btnUpload = document.getElementById("btnUpload");
-        if(btnUpload) btnUpload.addEventListener("click", uploadVideo);
+        if (btnUpload) btnUpload.addEventListener("click", uploadVideo);
         const btnRefresh = document.getElementById("btnRefresh");
-        if(btnRefresh) btnRefresh.addEventListener("click", () => { currentPage = 1; loadVideos(); });
+        if (btnRefresh) btnRefresh.addEventListener("click", () => { currentPage = 1; loadVideos(); });
         const btnLogout = document.getElementById("btnLogout");
-        if(btnLogout) btnLogout.addEventListener("click", () => {
-            localStorage.removeItem("token");
-            window.location.href = "login.html";
-        });
+        if (btnLogout) btnLogout.addEventListener("click", logout);
     }
 });

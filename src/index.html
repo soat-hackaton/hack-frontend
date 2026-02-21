@@ -1,17 +1,19 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard - Hack Video</title>
-    
+
     <link rel="icon" type="image/png" href="img/favicon.png">
-    
+
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
-    
+
     <link href="css/styles.css" rel="stylesheet">
 </head>
+
 <body class="bg-light">
 
     <div id="loader" class="loader-overlay">
@@ -33,21 +35,21 @@
 
     <div class="container">
         <h4 id="userGreeting" class="mb-4 fw-normal">Olá, que vídeo iremos processar hoje?</h4>
-        
+
         <div class="card mb-4 shadow-sm">
             <div class="card-header bg-success text-white">
                 <i class="bi bi-cloud-upload"></i> Novo Processamento
             </div>
             <div class="card-body">
                 <label for="videoInput" class="form-label fw-bold">Selecione um vídeo para processar</label>
-                
+
                 <div class="input-group mb-1">
                     <input type="file" class="form-control" id="videoInput" accept="video/mp4">
                     <button class="btn btn-success" type="button" id="btnUpload" disabled>Enviar</button>
                 </div>
-                
+
                 <small class="text-muted">Formato suportado: .mp4 (Máx 100MB)</small>
-                
+
                 <div id="uploadMsg" class="mt-2"></div>
             </div>
         </div>
@@ -70,7 +72,7 @@
                         </tr>
                     </thead>
                     <tbody id="videoTableBody">
-                        </tbody>
+                    </tbody>
                 </table>
             </div>
 
@@ -88,7 +90,8 @@
 
     </div>
 
-    <script src="js/auth.js"></script>
-    <script src="js/video.js"></script>
+    <script type="module" src="js/auth.js"></script>
+    <script type="module" src="js/video.js"></script>
 </body>
+
 </html>
